@@ -24,7 +24,6 @@ class Paymentwall extends PaymentModule
         $this->confirmUninstall = $this->l('Are you sure you want to uninstall, and remove all information regarding this module?');
 
         $this->initPaymentwallConfig();
-//        ini_set('display_errors',1);
 //        $this->context->controller->addCSS($this->_path . 'css/paymentwall.css');
     }
 
@@ -224,7 +223,6 @@ class Paymentwall extends PaymentModule
     {
         $cart = Context::getContext()->cart;
         $paymentwall = new Paymentwall();
-//        $paymentwall->createOrder($cart);
 
         $currency = new Currency(intval($cart->id_currency));
         $currencyCode = $currency->iso_code;
