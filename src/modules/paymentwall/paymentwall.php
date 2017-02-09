@@ -1,5 +1,6 @@
 <?php
 require_once('lib/paymentwall-php/lib/paymentwall.php');
+use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
 
 class Paymentwall extends PaymentModule
 {
@@ -23,7 +24,8 @@ class Paymentwall extends PaymentModule
         $this->confirmUninstall = $this->l('Are you sure you want to uninstall, and remove all information regarding this module?');
 
         $this->initPaymentwallConfig();
-        $this->context->controller->addCSS($this->_path . 'css/paymentwall.css');
+//        ini_set('display_errors',1);
+//        $this->context->controller->addCSS($this->_path . 'css/paymentwall.css');
     }
 
     public function install()
@@ -37,7 +39,7 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_TEST_MODE', 0);
         Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', self::ORDER_PROCESSING);
         Configuration::updateValue('PAYMENTWALL_ORDER_AWAITING', (int)$this->createOrderStatus());
-        if (!$this->registerHook('payment')) {
+        if (!$this->registerHook('paymentOptions')) {
             return false;
         }
 
@@ -45,7 +47,7 @@ class Paymentwall extends PaymentModule
 
     public function uninstall()
     {
-        Configuration::deleteByName('PAYMENTWALL_APP_KEY', $this->l('Application key'));
+        Configuration::deleteByName('PAYMENTWALL_APP_KEY', $this->l('Project key'));
         Configuration::deleteByName('PAYMENTWALL_SECRET_KEY', $this->l('Secret key'));
         Configuration::deleteByName('PAYMENTWALL_WIDGET_TYPE', $this->l('Widget code'));
         Configuration::deleteByName('PAYMENTWALL_TEST_MODE', $this->l('Test mode'));
@@ -63,7 +65,7 @@ class Paymentwall extends PaymentModule
 
         if (Tools::getValue('submitAddconfiguration')) {
             if (!Tools::getValue('PAYMENTWALL_APP_KEY'))
-                $this->_postErrors[] = $this->l('Application key is required.');
+                $this->_postErrors[] = $this->l('Project key is required.');
             if (!Tools::getValue('PAYMENTWALL_SECRET_KEY'))
                 $this->_postErrors[] = $this->l('Secret key is required.');
             if (!Tools::getValue('PAYMENTWALL_WIDGET_TYPE'))
@@ -98,9 +100,9 @@ class Paymentwall extends PaymentModule
                 'input' => array(
                     array(
                         'type' => 'text',
-                        'label' => $this->l('Application key'),
+                        'label' => $this->l('Project key'),
                         'name' => 'PAYMENTWALL_APP_KEY',
-                        'suffix' => 'Application key for payment method: Paymentwall',
+                        'suffix' => 'Project key for payment method: Paymentwall',
                         'class' => 'w220',
                     ),
                     array(
@@ -176,6 +178,65 @@ class Paymentwall extends PaymentModule
     {
         $this->smarty->assign('path', $this->_path);
         return $this->display(__FILE__, '/views/payment.tpl');
+    }
+
+    public function hookPaymentOptions($params)
+    {
+        if (!$this->active) {
+            return;
+        }
+
+        if (!$this->checkCurrency($params['cart'])) {
+            return;
+        }
+
+        $this->smarty->assign(
+            $this->getTemplateVarInfos()
+        );
+
+        $newOption = new PaymentOption();
+        $newOption->setCallToActionText($this->trans('Pay by PaymentWall', array()))
+            ->setAction($this->context->link->getModuleLink($this->name, 'order_summary', array(), true))
+            ->setAdditionalInformation($this->fetch('module:paymentwall/views/templates/hook/payment_infos.tpl'));
+        $payment_options = [
+            $newOption,
+        ];
+
+        return $payment_options;
+    }
+
+    public function checkCurrency($cart)
+    {
+        $currency_order = new Currency((int)($cart->id_currency));
+        $currencies_module = $this->getCurrency((int)$cart->id_currency);
+
+        if (is_array($currencies_module)) {
+            foreach ($currencies_module as $currency_module) {
+                if ($currency_order->id == $currency_module['id_currency']) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public function getTemplateVarInfos()
+    {
+        $cart = Context::getContext()->cart;
+        $paymentwall = new Paymentwall();
+//        $paymentwall->createOrder($cart);
+
+        $currency = new Currency(intval($cart->id_currency));
+        $currencyCode = $currency->iso_code;
+        $totalOrder = $cart->getOrderTotal();
+
+        return array(
+            'orderId' => $paymentwall->currentOrder,
+            'totalOrder' => $totalOrder,
+            'currencyCode' => $currencyCode,
+            'HOOK_PW_LOCAL' => $paymentwall->getWidget($cart, $totalOrder, $currencyCode),
+            'payment_success' => Configuration::get('PAYMENTWALL_ORDER_STATUS')
+        );
     }
 
     public function getWidget($cart, $totalOrder, $currencyCode)
@@ -303,6 +364,8 @@ class Paymentwall extends PaymentModule
     public function pingBack($getData)
     {
         unset($getData['controller']);
+        unset($getData['module']);
+        unset($getData['fc']);
         $pingback = new Paymentwall_Pingback($getData, $_SERVER['REMOTE_ADDR']);
         $orderId = $pingback->getProductId();
 
