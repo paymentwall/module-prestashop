@@ -24,7 +24,6 @@ class Paymentwall extends PaymentModule
         $this->confirmUninstall = $this->l('Are you sure you want to uninstall, and remove all information regarding this module?');
 
         $this->initPaymentwallConfig();
-//        $this->context->controller->addCSS($this->_path . 'css/paymentwall.css');
     }
 
     public function install()
@@ -60,7 +59,7 @@ class Paymentwall extends PaymentModule
 
     public function getContent()
     {
-        $this->_html = '<h2><img src="' . $this->_path . 'images/logo.gif"> Paymentwall</h2>';
+        $this->_html = '<h2><img src="' . $this->_path . 'images/pw-glyph-logo-gold.png"> Paymentwall</h2>';
 
         if (Tools::getValue('submitAddconfiguration')) {
             if (!Tools::getValue('PAYMENTWALL_APP_KEY'))
@@ -84,6 +83,7 @@ class Paymentwall extends PaymentModule
             }
         }
 
+		
         $this->displayFormSettings();
         return $this->_html;
     }
@@ -194,7 +194,7 @@ class Paymentwall extends PaymentModule
         );
 
         $newOption = new PaymentOption();
-        $newOption->setCallToActionText($this->trans('Pay by PaymentWall', array()))
+        $newOption->setCallToActionText($this->trans('Pay via PaymentWall', array()))
             ->setAction($this->context->link->getModuleLink($this->name, 'order_summary', array(), true))
             ->setAdditionalInformation($this->fetch('module:paymentwall/views/templates/hook/payment_infos.tpl'));
         $payment_options = [
@@ -364,7 +364,7 @@ class Paymentwall extends PaymentModule
         unset($getData['controller']);
         unset($getData['module']);
         unset($getData['fc']);
-        $pingback = new Paymentwall_Pingback($getData, $_SERVER['REMOTE_ADDR']);
+        $pingback = new Paymentwall_Pingback($getData, Tools::getRemoteAddr());
         $orderId = $pingback->getProductId();
 
         if ($pingback->validate()) {

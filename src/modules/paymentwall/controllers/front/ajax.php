@@ -3,15 +3,11 @@ class PaymentwallAjaxModuleFrontController extends ModuleFrontController
 {
     public function postProcess()
     {
-        if(!$_GET['orderId']) {
+        $orderId = Tools::getValue('orderId');
+        if (!$orderId || !$orderStatus = OrderHistory::getLastOrderState($orderId)) {
             echo 0;
-            return;
-        }
-        $orderStatus = OrderHistory::getLastOrderState($_GET['orderId']);
-        if ($orderStatus) {
-            echo $orderStatus->id;
         } else {
-            echo 0;
+            echo $orderStatus->id;
         }
     }
 }

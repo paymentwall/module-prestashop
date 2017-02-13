@@ -3,7 +3,7 @@ Paymentwall module for Prestashop.
 
 
 ###Versions
-* Tested on Prestashop 1.6.1.5
+* Tested on Prestashop 1.7
 * PHP 5.3 or later
 
 #Installation
