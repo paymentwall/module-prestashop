@@ -32,10 +32,10 @@
         <script type="text/javascript">
             var xhttp = new XMLHttpRequest();
             xhttp.onreadystatechange = function () {
-//                if (xhttp.readyState == 4 && xhttp.status == 200) {
+                if (xhttp.readyState == 4 && xhttp.status == 200) {
                     if ({/literal}{$payment_success}{literal} == xhttp.responseText) {
                         window.location.href = '{/literal}{$base_url}{literal}order-confirmation?orderId={/literal}{$orderId}{literal}';
-//                    }
+                    }
                 }
             };
             setInterval(function () {
