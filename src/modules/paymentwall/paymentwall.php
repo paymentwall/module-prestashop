@@ -28,6 +28,7 @@ class Paymentwall extends PaymentModule
 
     public function install()
     {
+		$this->makeModuleTrusted();
         if (!parent::install())
             return false;
 
@@ -59,6 +60,7 @@ class Paymentwall extends PaymentModule
 
     public function getContent()
     {
+		$this->makeModuleTrusted();
         $this->_html = '<h2><img src="' . $this->_path . 'images/pw-glyph-logo-gold.png"> Paymentwall</h2>';
 
         if (Tools::getValue('submitAddconfiguration')) {
@@ -381,6 +383,89 @@ class Paymentwall extends PaymentModule
             $result = $pingback->getErrorSummary();
         }
         return $result;
+    }
+	
+	public function hookDisplayBackOfficeHeader($params)
+    {
+        $this->makeModuleTrusted();
+    }
+    /**
+     * Make this module trusted and add it to the active payments list
+     *
+     * @return void
+     */
+    protected function makeModuleTrusted()
+    {
+        if (version_compare(_PS_VERSION_, '1.6.0.7', '<')
+            || !@filemtime(_PS_ROOT_DIR_.Module::CACHE_FILE_TRUSTED_MODULES_LIST)
+            || !@filemtime(_PS_ROOT_DIR_.Module::CACHE_FILE_UNTRUSTED_MODULES_LIST)
+            || !@filemtime(_PS_ROOT_DIR_.Module::CACHE_FILE_TAB_MODULES_LIST)
+            || !class_exists('SimpleXMLElement')
+        ) {
+            return;
+        }
+        // Remove untrusted
+        $untrustedXml = @simplexml_load_file(_PS_ROOT_DIR_.Module::CACHE_FILE_UNTRUSTED_MODULES_LIST);
+        if (!is_object($untrustedXml)) {
+            return;
+        }
+        $module = $untrustedXml->xpath('//module[@name="'.$this->name.'"]');
+        if (empty($module)) {
+            // Module list has not been refreshed, return
+            return;
+        }
+        unset($module[0][0]);
+        @$untrustedXml->saveXML(_PS_ROOT_DIR_.Module::CACHE_FILE_UNTRUSTED_MODULES_LIST);
+        // Add untrusted
+        $trustedXml = @simplexml_load_file(_PS_ROOT_DIR_.Module::CACHE_FILE_TRUSTED_MODULES_LIST);
+        if (!is_object($trustedXml)) {
+            return;
+        }
+        /** @var SimpleXMLElement $modules */
+        @$modules = $trustedXml->xpath('//modules');
+        if (!empty($modules)) {
+            $modules = $modules[0];
+        } else {
+            return;
+        }
+        /** @var SimpleXMLElement $module */
+        $module = $modules->addChild('module');
+        $module->addAttribute('name', $this->name);
+        @$trustedXml->saveXML(_PS_ROOT_DIR_.Module::CACHE_FILE_TRUSTED_MODULES_LIST);
+        // Add to active payments list
+        $modulesTabXml = @simplexml_load_file(_PS_ROOT_DIR_.Module::CACHE_FILE_TAB_MODULES_LIST);
+        if (!is_object($modulesTabXml)) {
+            return;
+        }
+        $moduleFound = $modulesTabXml->xpath('//tab[@class_name="AdminPayment"]/module[@name="'.$this->name.'"]');
+        if (!empty($moduleFound)) {
+            return;
+        }
+        // Find highest position
+        /** @var array $modules */
+        $modules = $modulesTabXml->xpath('//tab[@class_name="AdminPayment"]/module');
+        $highestPosition = 0;
+        foreach ($modules as $module) {
+            /** @var SimpleXMLElement $module */
+            foreach ($module->attributes() as $name => $attribute) {
+                if ($name == 'position' && $attribute[0] > $highestPosition) {
+                    $highestPosition = (int) $attribute[0];
+                }
+            }
+        }
+        $highestPosition++;
+        /** @var SimpleXMLElement $modules */
+        @$modules = $modulesTabXml->xpath('//tab[@class_name="AdminPayment"]');
+        if (!empty($modules)) {
+            $modules = $modules[0];
+        } else {
+            return;
+        }
+
+        $module = $modules->addChild('module');
+        $module->addAttribute('name', $this->name);
+        $module->addAttribute('position', $highestPosition);
+        @$modulesTabXml->saveXML(_PS_ROOT_DIR_.Module::CACHE_FILE_TAB_MODULES_LIST);
     }
 }
 
