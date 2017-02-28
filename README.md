@@ -1,12 +1,12 @@
-#About Prestashop module
+# About Prestashop module
 Paymentwall module for Prestashop.
 
 
-###Versions
+### Versions
 * Tested on Prestashop 1.6.1.5
 * PHP 5.3 or later
 
-#Installation
+# Installation
 To install Paymentwall Prestashop module, please follow the [instructions](https://www.paymentwall.com/en/documentation/Prestashop/828).
 
 After cloning the repository don't forget to install Paymentwall PHP API library (**required**):
