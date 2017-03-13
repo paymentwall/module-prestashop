@@ -4,7 +4,6 @@
 </h1>
 
 {assign var='current_step' value='payment'}
-{include file="$tpl_dir./order-steps.tpl"}
 
 <form action="#" method="post">
     <div class="box cheque-box">
