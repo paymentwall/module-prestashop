@@ -26,7 +26,7 @@
             We allow the following currency to be sent via Paymentwall:&nbsp;<b>{$currencyCode}</b>
         </p>
         <br/>
-        {l s='%s' sprintf=[$HOOK_PW_LOCAL] mod="paymentwall"}
+        {l s='%s' sprintf=[$HOOK_PW_LOCAL]}
     </div>
     {literal}
         <script type="text/javascript">
