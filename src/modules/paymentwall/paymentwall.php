@@ -8,6 +8,11 @@ class Paymentwall extends PaymentModule
     private $_postErrors = array();
     const ORDER_CANCEL = 6;
     const ORDER_PROCESSING = 3;
+    const PWLOCAL_METHOD = 'Paymentwall';
+    const PS_OS_SHIPPED = 4;
+    const PS_OS_DELIVERED = 5;
+    const STATUS_DELIVERED = 'delivered';
+    const STATUS_DELIVERING = 'delivering';
 
     public function __construct()
     {
@@ -378,6 +383,15 @@ class Paymentwall extends PaymentModule
             } elseif ($pingback->isCancelable()) {
                 $history->changeIdOrderState(self::ORDER_CANCEL, $orderId);
             }
+
+            $order = new Order(intval($orderId));
+            $ref = $pingback->getReferenceId();
+            $payments = $order->getOrderPayments();
+            $orderPayment = new OrderPayment($payments[0]->id);
+            if ($orderPayment) {
+                $orderPayment->transaction_id = $ref;
+                $orderPayment->update();
+            }
             $result = "OK";
         } else {
             $result = $pingback->getErrorSummary();
@@ -466,6 +480,57 @@ class Paymentwall extends PaymentModule
         $module->addAttribute('name', $this->name);
         $module->addAttribute('position', $highestPosition);
         @$modulesTabXml->saveXML(_PS_ROOT_DIR_.Module::CACHE_FILE_TAB_MODULES_LIST);
+    }
+
+    public function hookActionOrderHistoryAddAfter($params)
+    {
+        if(!empty($params)) {
+            $order = new Order(intval($params['order_history']->id_order));
+            $payments = $order->getOrderPayments();
+            $orderPayment = new OrderPayment($payments[0]->id);
+            $orderDetail = new Order(intval($params['order_history']->id_order));
+            $addressDelivery = new Address(intval($orderDetail->id_address_delivery));
+            
+            if($orderDetail->payment == self::PWLOCAL_METHOD && ($params['order_history']->id_order_state == self::PS_OS_DELIVERED || $params['order_history']->id_order_state == self::PS_OS_SHIPPED)) {
+
+                $data = array(
+                    'payment_id' => $orderPayment->transaction_id,
+                    'merchant_reference_id' => $orderDetail->id,
+                    'estimated_delivery_datetime' => $orderDetail->delivery_date,
+                    'estimated_update_datetime' => $orderDetail->date_upd,
+                    'refundable' => true,
+                    'details' => 'Order status has been changed on ' . $orderDetail->date_upd,
+                    'shipping_address[email]' => Context::getContext()->customer->email,
+                    'shipping_address[firstname]' => $addressDelivery->firstname,
+                    'shipping_address[lastname]' => $addressDelivery->lastname,
+                    'shipping_address[country]' => $addressDelivery->country,
+                    'shipping_address[street]' => $addressDelivery->address1,
+                    'shipping_address[phone]' => $addressDelivery->phone ? $addressDelivery->phone : $addressDelivery->phone_mobile,
+                    'shipping_address[zip]' => $addressDelivery->postcode,
+                    'shipping_address[city]' => $addressDelivery->city,
+                    'reason' => 'none',
+                    'is_test' => Configuration::get('PAYMENTWALL_TEST_MODE') ? 1 : 0,
+                );
+
+                if (!empty($orderDetail->id_carrier)) {
+                    $data['type'] = 'physical';
+                    $data['shipping_address[state]'] = State::getNameById($addressDelivery->id_state) ? State::getNameById($addressDelivery->id_state) : $addressDelivery->address1;
+                } else {
+                    $data['type'] = 'digital';
+                }
+
+                if ($params['order_history']->id_order_state == self::PS_OS_DELIVERED)
+                {
+                    $data['status'] = self::STATUS_DELIVERED;
+                } else if ($params['order_history']->id_order_state == self::PS_OS_SHIPPED) {
+                    $data['status'] = self::STATUS_DELIVERING;
+                }
+
+                $delivery = new Paymentwall_GenerericApiObject('delivery');
+                
+                return $delivery->post($data);
+            }
+        }
     }
 }
 
