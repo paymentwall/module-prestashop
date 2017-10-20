@@ -1,4 +1,16 @@
 <?php
+
+/*
+ * Plugin Name: Paymentwall for Prestashop
+ * Plugin URI: https://docs.paymentwall.com/modules/prestashop
+ * Description: Official Paymentwall module for Prestashop.
+ * Version: v1.7.1
+ * Author: The Paymentwall Team
+ * Author URI: http://www.paymentwall.com/
+ * License: The MIT License (MIT)
+ *
+ */
+
 require_once('lib/paymentwall-php/lib/paymentwall.php');
 use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
 
