@@ -18,11 +18,8 @@ class Paymentwall extends PaymentModule
 {
     private $_html = '';
     private $_postErrors = array();
-    const ORDER_CANCEL = 6;
     const ORDER_PROCESSING = 3;
     const PWLOCAL_METHOD = 'Paymentwall';
-    const PS_OS_SHIPPED = 4;
-    const PS_OS_DELIVERED = 5;
     const STATUS_DELIVERED = 'delivered';
     const STATUS_DELIVERING = 'delivering';
 
@@ -56,6 +53,10 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', self::ORDER_PROCESSING);
         Configuration::updateValue('PAYMENTWALL_ORDER_AWAITING', (int)$this->createOrderStatus());
         if (!$this->registerHook('paymentOptions')) {
+            return false;
+        }
+
+        if (!$this->registerHook('actionOrderHistoryAddAfter')) {
             return false;
         }
 
@@ -292,19 +293,38 @@ class Paymentwall extends PaymentModule
 
     private function getUserProfileData($cart)
     {
-        $customer = new Customer((int)$cart->id_customer);
-        $address = $customer->getAddresses((int)$this->context->language->id);
+        $customerId = Context::getContext()->cart->id_customer;
+        $customerData = new Customer((int)$customerId);
+        $address = $customerData->getAddresses((int)$this->context->language->id);
         $address = $address[0];
-        return array(
+        $amountCustomerPaid = 0;
+        $statusList = array(
+            Configuration::get('PS_OS_DELIVERED'),
+            Configuration::get('PS_OS_SHIPPING'),
+            Configuration::get('PS_OS_PAYMENT'),
+            Configuration::get('PAYMENTWALL_ORDER_STATUS')
+        );
+        $completedOrders = $this->getCustomerOrderByStatus($customerId, $statusList);
+
+        foreach ($completedOrders as $order) {
+            $amountCustomerPaid += $order['total_paid'];
+        }
+
+        $data = array(
             'customer[city]' => $address['city'],
-            'customer[state]' => $address['state'],
+            'customer[state]' => $address['state'] ? $address['state'] : 'NA',
             'customer[address]' => $address['address1'],
             'customer[country]' => $address['country'],
             'customer[zip]' => $address['postcode'],
-            'customer[firstname]' => $customer->firstname,
-            'customer[lastname]' => $customer->lastname,
-            'email' => $customer->email
+            'customer[firstname]' => $customerData->firstname,
+            'customer[lastname]' => $customerData->lastname,
+            'email' => $customerData->email,
+            'history[registration_date]' => Group::getCurrent()->id == Configuration::get('PS_CUSTOMER_GROUP') ? $customerData->date_add : 'NA',
+            'history[delivered_products]' => count($this->getCustomerOrderByStatus($customerId, $status = array(Configuration::get('PS_OS_DELIVERED')))),
+            'history[payments_amount]' => $amountCustomerPaid,
         );
+        
+        return $data;
     }
 
     public function createOrder($cart)
@@ -393,7 +413,7 @@ class Paymentwall extends PaymentModule
                 $history->changeIdOrderState(Configuration::get('PAYMENTWALL_ORDER_STATUS'), $orderId);
                 $history->addWithemail(true, array());
             } elseif ($pingback->isCancelable()) {
-                $history->changeIdOrderState(self::ORDER_CANCEL, $orderId);
+                $history->changeIdOrderState(Configuration::get('PS_OS_CANCELED'), $orderId);
             }
 
             $order = new Order(intval($orderId));
@@ -503,7 +523,7 @@ class Paymentwall extends PaymentModule
             $orderDetail = new Order(intval($params['order_history']->id_order));
             $addressDelivery = new Address(intval($orderDetail->id_address_delivery));
             
-            if($orderDetail->payment == self::PWLOCAL_METHOD && ($params['order_history']->id_order_state == self::PS_OS_DELIVERED || $params['order_history']->id_order_state == self::PS_OS_SHIPPED)) {
+            if($orderDetail->payment == self::PWLOCAL_METHOD && ($params['order_history']->id_order_state == Configuration::get('PS_OS_DELIVERED') || $params['order_history']->id_order_state == Configuration::get('PS_OS_SHIPPING'))) {
 
                 $data = array(
                     'payment_id' => $orderPayment->transaction_id,
@@ -531,10 +551,10 @@ class Paymentwall extends PaymentModule
                     $data['type'] = 'digital';
                 }
 
-                if ($params['order_history']->id_order_state == self::PS_OS_DELIVERED)
+                if ($params['order_history']->id_order_state == Configuration::get('PS_OS_DELIVERED'))
                 {
                     $data['status'] = self::STATUS_DELIVERED;
-                } else if ($params['order_history']->id_order_state == self::PS_OS_SHIPPED) {
+                } else if ($params['order_history']->id_order_state == Configuration::get('PS_OS_SHIPPING')) {
                     $data['status'] = self::STATUS_DELIVERING;
                 }
 
@@ -543,6 +563,19 @@ class Paymentwall extends PaymentModule
                 return $delivery->post($data);
             }
         }
+    }
+
+    public function getCustomerOrderByStatus($customerId, $status)
+    {
+        $getCustomerOrders = Order::getCustomerOrders($customerId);
+        $data = [];
+        foreach ($getCustomerOrders as $order) {
+            if (in_array($order['current_state'], $status)) {
+                $data[] = $order;
+            }
+        }
+
+        return $data;        
     }
 }
 
