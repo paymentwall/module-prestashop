@@ -406,7 +406,7 @@ class Paymentwall extends PaymentModule
         $pingback = new Paymentwall_Pingback($getData, Tools::getRemoteAddr());
         $orderId = $pingback->getProductId();
 
-        if ($pingback->validate()) {
+        if ($pingback->validate(true)) {
             $history = new OrderHistory();
             $history->id_order = $orderId;
             if ($pingback->isDeliverable()) {
