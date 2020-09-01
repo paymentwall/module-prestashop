@@ -4,7 +4,7 @@
  * Plugin Name: Paymentwall for Prestashop 1.6
  * Plugin URI: https://docs.paymentwall.com/modules/prestashop
  * Description: Official Paymentwall module for Prestashop.
- * Version: 1.6.1
+ * Version: 1.6.2
  * Author: The Paymentwall Team
  * Author URI: http://www.paymentwall.com/
  * License: The MIT License (MIT)
@@ -20,6 +20,9 @@ class Paymentwall extends PaymentModule
     const ORDER_PROCESSING = 3;
     const PWLOCAL_METHOD = 'Paymentwall';
     const STATUS_DELIVERED = 'delivered';
+    const STATUS_ORDER_PLACED = 'order_placed';
+    const STATUS_ORDER_SHIPPED = 'order_shipped';
+    const STATUS_ORDER_CANCELED = 'order_cancelled';
     const STATUS_DELIVERING = 'delivering';
 
     public function __construct()
@@ -56,6 +59,9 @@ class Paymentwall extends PaymentModule
         }
 
         if (!$this->registerHook('actionOrderHistoryAddAfter')) {
+            return false;
+        }
+        if (!$this->registerHook('actionAdminOrdersTrackingNumberUpdate')) {
             return false;
         }
     }
@@ -324,23 +330,20 @@ class Paymentwall extends PaymentModule
         $orderId = $pingback->getProductId();
 
         if ($pingback->validate(true)) {
+            $referenceId = $pingback->getReferenceId();
             $history = new OrderHistory();
             $history->id_order = $orderId;
+
             if ($pingback->isDeliverable()) {
-                $history->changeIdOrderState(Configuration::get('PAYMENTWALL_ORDER_STATUS'), $orderId);
-                $history->addWithemail(true, array());
+                $newState = Configuration::get('PAYMENTWALL_ORDER_STATUS');
             } elseif ($pingback->isCancelable()) {
-                $history->changeIdOrderState(Configuration::get('PS_OS_CANCELED'), $orderId);
-                $history->addWithemail(true, array());
+                $newState = Configuration::get('PS_OS_CANCELED');
             }
 
-            $order = new Order(intval($orderId));
-            $ref = $pingback->getReferenceId();
-            $payments = $order->getOrderPayments();
-            $orderPayment = new OrderPayment($payments[0]->id);
-            if ($orderPayment) {
-                $orderPayment->transaction_id = $ref;
-                $orderPayment->update();
+            if (!empty($newState)) {
+                $history->changeIdOrderState($newState, $orderId);
+                $this->updateTransactionId($orderId, $referenceId);
+                $history->addWithemail(true, array());
             }
 
             $result = "OK";
@@ -352,54 +355,138 @@ class Paymentwall extends PaymentModule
 
     public function hookActionOrderHistoryAddAfter($params)
     {
-        if(!empty($params)) {
+        if (!empty($params)) {
             $order = new Order(intval($params['order_history']->id_order));
             $payments = $order->getOrderPayments();
             $orderPayment = new OrderPayment($payments[0]->id);
-            $orderDetail = new Order(intval($params['order_history']->id_order));
-            $addressDelivery = new Address(intval($orderDetail->id_address_delivery));
-        
-            if($orderDetail->payment == self::PWLOCAL_METHOD && ($params['order_history']->id_order_state == Configuration::get('PS_OS_DELIVERED') || $params['order_history']->id_order_state == Configuration::get('PS_OS_SHIPPING'))) {
 
-                $data = array(
-                    'payment_id' => $orderPayment->transaction_id,
-                    'merchant_reference_id' => $orderDetail->id,
-                    'estimated_delivery_datetime' => $orderDetail->delivery_date,
-                    'estimated_update_datetime' => $orderDetail->date_upd,
-                    'refundable' => true,
-                    'details' => 'Order status has been changed on ' . $orderDetail->date_upd,
-                    'shipping_address[email]' => Context::getContext()->customer->email,
-                    'shipping_address[firstname]' => $addressDelivery->firstname,
-                    'shipping_address[lastname]' => $addressDelivery->lastname,
-                    'shipping_address[country]' => $addressDelivery->country,
-                    'shipping_address[street]' => $addressDelivery->address1,
-                    'shipping_address[phone]' => $addressDelivery->phone ? $addressDelivery->phone : $addressDelivery->phone_mobile,
-                    'shipping_address[zip]' => $addressDelivery->postcode,
-                    'shipping_address[city]' => $addressDelivery->city,
-                    'reason' => 'none',
-                    'is_test' => Configuration::get('PAYMENTWALL_TEST_MODE') ? 1 : 0,
-                );
+            if (
+                $order->payment == self::PWLOCAL_METHOD
+                && (
+                    $params['order_history']->id_order_state == Configuration::get('PS_OS_DELIVERED')
+                    || $params['order_history']->id_order_state == Configuration::get('PS_OS_SHIPPING')
+                    || $params['order_history']->id_order_state == Configuration::get('PAYMENTWALL_ORDER_STATUS')
+                    || $params['order_history']->id_order_state == Configuration::get('PS_OS_CANCELED')
+                )
+            ) {
 
-                if (!empty($orderDetail->id_carrier)) {
-                    $data['type'] = 'physical';
-                    $data['shipping_address[state]'] = State::getNameById($addressDelivery->id_state) ? State::getNameById($addressDelivery->id_state) : $addressDelivery->address1;
-                } else {
-                    $data['type'] = 'digital';
-                }
+                $deliveryStatus = $this->prepareDeliveryStatus($params['order_history']->id_order_state );
+                $data =  $this->prepareDeliveryData($order, $orderPayment->transaction_id, $deliveryStatus);
 
-                if ($params['order_history']->id_order_state == Configuration::get('PS_OS_DELIVERED'))
-                {
-                    $data['status'] = self::STATUS_DELIVERED;
-                } else if ($params['order_history']->id_order_state == Configuration::get('PS_OS_SHIPPING')) {
-                    $data['status'] = self::STATUS_DELIVERING;
-                }
-
+                $this->initPaymentwallConfig();
                 $delivery = new Paymentwall_GenerericApiObject('delivery');
-                
+
                 return $delivery->post($data);
             }
         }
     }
-}
 
-?>
+    public function prepareDeliveryData($order, $ref, $status = '', $trackingData = array()) {
+        $isVirtual = $this->hasVirtualProduct($order);
+        $addressDelivery = new Address(intval($order->id_address_delivery));
+
+        $customer = new Customer((int)$order->id_customer);
+
+        $data = array(
+            'payment_id' => $ref,
+            'merchant_reference_id' => $order->id,
+            'estimated_delivery_datetime' => $order->delivery_date,
+            'estimated_update_datetime' => $order->date_upd,
+            'refundable' => true,
+            'status' => $status,
+            'details' => 'Order status has been changed on ' . $order->date_upd,
+            'shipping_address[email]' => $customer->email ? $customer->email : Context::getContext()->customer->email,
+            'shipping_address[firstname]' => $addressDelivery->firstname,
+            'shipping_address[lastname]' => $addressDelivery->lastname,
+            'shipping_address[country]' => $addressDelivery->country,
+            'shipping_address[street]' => $addressDelivery->address1,
+            'shipping_address[phone]' => !empty($addressDelivery->phone) ? $addressDelivery->phone : (!empty($addressDelivery->phone_mobile) ? $addressDelivery->phone_mobile : 'NA'),
+            'shipping_address[state]' => State::getNameById($addressDelivery->id_state) ? State::getNameById($addressDelivery->id_state) : 'NA',
+            'shipping_address[zip]' => $addressDelivery->postcode ? $addressDelivery->postcode : 'NA',
+            'shipping_address[city]' => $addressDelivery->city ? $addressDelivery->city : 'NA',
+            'reason' => 'none',
+            'is_test' => Configuration::get('PAYMENTWALL_TEST_MODE') ? 1 : 0,
+        );
+
+        if ($isVirtual) {
+            $data['type'] = 'digital';
+        } else {
+            $data['type'] = 'physical';
+        }
+
+        if (!empty($trackingData['carrier_tracking_id']) && !empty($trackingData['carrier_type'])) {
+            $data = array_merge($data, $trackingData);
+        }
+
+        return $data;
+
+    }
+
+    public function hasVirtualProduct($order) {
+        if (!empty($order)) {
+            $producs = $order->getProducts();
+            foreach ($producs as $item) {
+                if ($item['is_virtual']) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    public function prepareTrackingData($params) {
+        $trackingData = [];
+        if (!empty($params['order']) && !empty($params['carrier'])) {
+            $trackingData['carrier_tracking_id'] = $params['order']->getWsShippingNumber();
+            $trackingData['carrier_type'] = $params['carrier']->name;
+        }
+        return $trackingData;
+
+    }
+
+    public function hookActionAdminOrdersTrackingNumberUpdate($params) {
+        if (!empty($params['order']->getWsShippingNumber()) &&  $params['order']->payment == self::PWLOCAL_METHOD) {
+            $payments = $params['order']->getOrderPayments();
+            $trackingData = $this->prepareTrackingData($params);
+            $dataDelivery = $this->prepareDeliveryData($params['order'], $payments[0]->transaction_id, self::STATUS_ORDER_SHIPPED, $trackingData);
+
+            $this->initPaymentwallConfig();
+            $delivery = new Paymentwall_GenerericApiObject('delivery');
+
+            return $delivery->post($dataDelivery);
+        }
+    }
+
+    public function prepareDeliveryStatus($orderState) {
+        $status = null;
+        switch ($orderState) {
+            case  Configuration::get('PS_OS_DELIVERED') :
+                $status = self::STATUS_DELIVERED;
+                break;
+            case Configuration::get('PS_OS_SHIPPING'):
+                $status = self::STATUS_ORDER_SHIPPED;
+                break;
+            case Configuration::get('PAYMENTWALL_ORDER_STATUS'):
+                $status = self::STATUS_ORDER_PLACED;
+                break;
+            case Configuration::get('PS_OS_CANCELED'):
+                $status = self::STATUS_ORDER_CANCELED;
+        }
+
+        return $status;
+    }
+
+    public function updateTransactionId ($orderId, $referenceId) {
+        $order = new Order(intval($orderId));
+        if (!Validate::isLoadedObject($order)) {
+            return;
+        }
+        $payments = $order->getOrderPayments();
+        $orderPayment = new OrderPayment($payments[0]->id);
+        if ($orderPayment) {
+            $orderPayment->transaction_id = $referenceId;
+            $orderPayment->update();
+        }
+    }
+}
