@@ -4,7 +4,7 @@
  * Plugin Name: Paymentwall for Prestashop 1.6
  * Plugin URI: https://docs.paymentwall.com/modules/prestashop
  * Description: Official Paymentwall module for Prestashop.
- * Version: 1.6.1
+ * Version: 1.6.2
  * Author: The Paymentwall Team
  * Author URI: http://www.paymentwall.com/
  * License: The MIT License (MIT)
