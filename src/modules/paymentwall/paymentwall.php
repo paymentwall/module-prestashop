@@ -42,9 +42,7 @@ class Paymentwall extends PaymentModule
 
     public function install()
     {
-		$this->makeModuleTrusted();
-        if (!parent::install())
-            return false;
+        $this->makeModuleTrusted();
 
         Configuration::updateValue('PAYMENTWALL_APP_KEY', '');
         Configuration::updateValue('PAYMENTWALL_SECRET_KEY', '');
@@ -52,14 +50,11 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_TEST_MODE', 0);
         Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', self::ORDER_PROCESSING);
         Configuration::updateValue('PAYMENTWALL_ORDER_AWAITING', (int)$this->createOrderStatus());
-        if (!$this->registerHook('paymentOptions')) {
-            return false;
-        }
+        Configuration::updateValue('USE_PAYMENTWALL_HOSTED_PAGE', 0);
 
-        if (!$this->registerHook('actionOrderHistoryAddAfter')) {
-            return false;
-        }
-
+        return parent::install()
+            && $this->registerHook('paymentOptions')
+            && $this->registerHook('paymentReturn');
     }
 
     public function uninstall()
