@@ -50,7 +50,7 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_TEST_MODE', 0);
         Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', self::ORDER_PROCESSING);
         Configuration::updateValue('PAYMENTWALL_ORDER_AWAITING', (int)$this->createOrderStatus());
-        Configuration::updateValue('USE_PAYMENTWALL_HOSTED_PAGE', 0);
+        Configuration::updateValue('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', 0);
 
         return parent::install()
             && $this->registerHook('paymentOptions')
