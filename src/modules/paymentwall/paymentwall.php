@@ -53,8 +53,7 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', 0);
 
         return parent::install()
-            && $this->registerHook('paymentOptions')
-            && $this->registerHook('paymentReturn');
+            && $this->registerHook('paymentOptions');
     }
 
     public function uninstall()
