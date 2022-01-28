@@ -4,7 +4,7 @@
  * Plugin Name: Paymentwall for Prestashop
  * Plugin URI: https://docs.paymentwall.com/modules/prestashop
  * Description: Official Paymentwall module for Prestashop.
- * Version: v1.7.2
+ * Version: v1.7.4
  * Author: The Paymentwall Team
  * Author URI: http://www.paymentwall.com/
  * License: The MIT License (MIT)
@@ -42,9 +42,7 @@ class Paymentwall extends PaymentModule
 
     public function install()
     {
-		$this->makeModuleTrusted();
-        if (!parent::install())
-            return false;
+        $this->makeModuleTrusted();
 
         Configuration::updateValue('PAYMENTWALL_APP_KEY', '');
         Configuration::updateValue('PAYMENTWALL_SECRET_KEY', '');
@@ -52,14 +50,10 @@ class Paymentwall extends PaymentModule
         Configuration::updateValue('PAYMENTWALL_TEST_MODE', 0);
         Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', self::ORDER_PROCESSING);
         Configuration::updateValue('PAYMENTWALL_ORDER_AWAITING', (int)$this->createOrderStatus());
-        if (!$this->registerHook('paymentOptions')) {
-            return false;
-        }
 
-        if (!$this->registerHook('actionOrderHistoryAddAfter')) {
-            return false;
-        }
-
+        return parent::install()
+            && $this->registerHook('paymentOptions')
+            && $this->registerHook('actionOrderHistoryAddAfter');
     }
 
     public function uninstall()
