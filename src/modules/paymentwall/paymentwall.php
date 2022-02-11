@@ -4,7 +4,7 @@
  * Plugin Name: Paymentwall for Prestashop
  * Plugin URI: https://docs.paymentwall.com/modules/prestashop
  * Description: Official Paymentwall module for Prestashop.
- * Version: v1.7.4
+ * Version: v1.8.0
  * Author: The Paymentwall Team
  * Author URI: http://www.paymentwall.com/
  * License: The MIT License (MIT)
@@ -22,6 +22,8 @@ class Paymentwall extends PaymentModule
     const PWLOCAL_METHOD = 'Paymentwall';
     const STATUS_DELIVERED = 'delivered';
     const STATUS_DELIVERING = 'delivering';
+    const WIDGET_WIDTH = '100%';
+    const WIDGET_HEIGHT = '850px';
 
     public function __construct()
     {
@@ -63,6 +65,7 @@ class Paymentwall extends PaymentModule
         Configuration::deleteByName('PAYMENTWALL_WIDGET_TYPE', $this->l('Widget code'));
         Configuration::deleteByName('PAYMENTWALL_TEST_MODE', $this->l('Test mode'));
         Configuration::deleteByName('PAYMENTWALL_ORDER_STATUS', $this->l('Order status'));
+        Configuration::deleteByName('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', $this->l('Open in Paymentwall hosted page'));
         $this->removeOrderStatus();
         Configuration::deleteByName('PAYMENTWALL_ORDER_AWAITING', $this->l('Order awaiting'));
         if (!parent::uninstall())
@@ -89,6 +92,7 @@ class Paymentwall extends PaymentModule
                 Configuration::updateValue('PAYMENTWALL_WIDGET_TYPE', Tools::getValue('PAYMENTWALL_WIDGET_TYPE'));
                 Configuration::updateValue('PAYMENTWALL_TEST_MODE', Tools::getValue('PAYMENTWALL_TEST_MODE'));
                 Configuration::updateValue('PAYMENTWALL_ORDER_STATUS', Tools::getValue('PAYMENTWALL_ORDER_STATUS'));
+                Configuration::updateValue('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', Tools::getValue('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE'));
                 $this->_html .= $this->displayConfirmation($this->l('Settings updated'));
             } else {
                 foreach ($this->_postErrors AS $error) {
@@ -141,6 +145,23 @@ class Paymentwall extends PaymentModule
                     ),
                     array(
                         'type' => 'switch',
+                        'label' => $this->l('Open in Paymentwall hosted page'),
+                        'name' => 'PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE',
+                        'values' => array(
+                            array(
+                                'id' => 'active_on',
+                                'value' => 1,
+                                'label' => $this->l('Enabled')
+                            ),
+                            array(
+                                'id' => 'active_off',
+                                'value' => 0,
+                                'label' => $this->l('Disabled')
+                            )
+                        )
+                    ),
+                    array(
+                        'type' => 'switch',
                         'label' => $this->l('Test mode'),
                         'name' => 'PAYMENTWALL_TEST_MODE',
                         'values' => array(
@@ -184,6 +205,7 @@ class Paymentwall extends PaymentModule
             'PAYMENTWALL_WIDGET_TYPE' => Tools::getValue('PAYMENTWALL_WIDGET_TYPE', Configuration::get('PAYMENTWALL_WIDGET_TYPE', null, $id_shop_group, $id_shop)),
             'PAYMENTWALL_TEST_MODE' => Tools::getValue('PAYMENTWALL_TEST_MODE', Configuration::get('PAYMENTWALL_TEST_MODE', null, $id_shop_group, $id_shop)),
             'PAYMENTWALL_ORDER_STATUS' => Tools::getValue('PAYMENTWALL_ORDER_STATUS', Configuration::get('PAYMENTWALL_ORDER_STATUS', null, $id_shop_group, $id_shop)),
+            'PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE' => Tools::getValue('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', Configuration::get('PAYMENTWALL_USE_PAYMENTWALL_HOSTED_PAGE', null, $id_shop_group, $id_shop)),
         );
     }
 
@@ -253,6 +275,11 @@ class Paymentwall extends PaymentModule
 
     public function getWidget($cart, $totalOrder, $currencyCode)
     {
+        $customer = new Customer($cart->id_customer);
+        $module = Module::getInstanceByName('paymentwall');
+
+        $successUrl = $this->getSuccessUrl($cart, $customer, $module);
+
         $widget = new Paymentwall_Widget(
             $cart->id_customer, // id of the end-user who's making the payment
             Configuration::get('PAYMENTWALL_WIDGET_TYPE'), // widget code, e.g. p1; can be picked inside of your merchant account
@@ -269,11 +296,24 @@ class Paymentwall extends PaymentModule
                 array(
                     'integration_module' => 'prestashop',
                     'test_mode' => Configuration::get('PAYMENTWALL_TEST_MODE'),
+                    'success_url' => $successUrl
                 ),
                 $this->getUserProfileData($cart)
             )
         );
-        return $widget->getHtmlCode(array('width' => '100%', 'height' => '380px'));
+        return $widget;
+    }
+
+    public function getSuccessUrl($cart, $customer, $module)
+    {
+        $params = [
+            'id_cart' => $cart->id,
+            'id_module' => $module->id,
+            'id_order' => $module->currentOrder,
+            'key' => $customer->secure_key
+        ];
+
+        return _PS_BASE_URL_.__PS_BASE_URI__ . 'order-confirmation?' . http_build_query($params);
     }
 
     private function initPaymentwallConfig()
