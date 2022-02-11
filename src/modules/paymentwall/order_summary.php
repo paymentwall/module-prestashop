@@ -18,7 +18,8 @@ if (empty($cart->id)) {
         'orderId' => $paymentwall->currentOrder,
         'totalOrder' => $totalOrder,
         'currencyCode' => $currencyCode,
-        'HOOK_PW_LOCAL' => $paymentwall->getWidget($cart, $totalOrder, $currencyCode),
+        'HOOK_PW_LOCAL' => $paymentwall->getWidget($cart, $totalOrder, $currencyCode)
+            ->getHtmlCode(array('width' => $paymentwall::WIDGET_WIDTH, 'height' => $paymentwall::WIDGET_HEIGHT)),
         'payment_success' => Configuration::get('PAYMENTWALL_ORDER_STATUS')
     ));
 }
